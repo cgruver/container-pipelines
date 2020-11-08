@@ -1,0 +1,168 @@
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: NamespaceConfig
+metadata:
+  name: tekton-pipeline-config-quarkus-fast-jar
+spec:
+  labelSelector:
+    matchLabels:
+      pipeline: tekton-quarkus-fast-jar
+  templates:
+  - objectTemplate: |
+    apiVersion: tekton.dev/v1beta1
+    kind: Pipeline
+    metadata:
+      name: build-and-deploy-quarkus-fast-jar-app
+      namespace: {{ .Name }}
+    spec:
+      params:
+      - name: appName
+        type: string
+        description: "Application Name"
+      - name: git-repo
+        type: string
+        description: "Git Repository URL"
+      - name: git-branch
+        type: string
+        description: "Git Branch to clone"
+        default: "master"
+      - name: config-git-repo
+        type: string
+        description: "Config Git Repository URL"
+      - name: config-git-branch
+        type: string
+        description: "Config Git Branch to clone"
+        default: "master"
+      tasks:
+      - name: build
+        taskRef:
+          name: build-quarkus-fast-jar-app
+        params:
+        - name: appName
+          value: $(params.appName)
+        - name: git-repo
+          value: $(params.git-repo)
+        - name: git-branch
+          value: $(params.git-branch)
+      - name: config
+        taskRef:
+          name: config-app
+        runAfter:
+        - build
+        params:
+        - name: appName
+          value: $(params.appName)
+        - name: config-git-repo
+          value: $(params.config-git-repo)
+        - name: config-git-branch
+          value: $(params.config-git-branch)
+      - name: deploy
+        taskRef:
+          name: deploy-app
+        runAfter:
+        - config
+        params:
+        - name: appName
+          value: $(params.appName)
+  - objectTemplate: |
+      apiVersion: tekton.dev/v1beta1
+      kind: Task
+      metadata:
+        name: build-quarkus-fast-jar-app
+        namespace: {{ .Name }}
+      spec:
+        stepTemplate:
+          securityContext:
+            capabilities:
+              drop:
+              - KILL
+            runAsUser: 1000640000
+          volumeMounts:
+          - name: varlibc
+            mountPath: /var/lib/containers
+          - name: maven-settings
+            mountPath: /tmp/maven-settings
+        params:
+        - name: appName
+          type: string
+          description: "Application Name"
+        - name: git-repo
+          type: string
+          description: "Git Repository SSH URL"
+        - name: git-branch
+          type: string
+          description: "Git Branch to clone"
+          default: "master"
+        - name: tlsVerify
+          description: tls verify
+          type: string
+          default: "false"
+        steps:
+        - name: prep-build
+          image: image-registry.openshift-image-registry.svc:5000/openshift/mvn-jdk-mandrel:3.6.3-jdk11-20.1.0.2
+          imagePullPolicy: Always
+          script: |
+            git clone -b $(params.git-branch) --single-branch $(params.git-repo) /workspace/source
+            cp /tmp/maven-settings/settings.xml /workspace/source
+            cd /workspace/source
+            echo "$(git rev-parse HEAD)" > git-commit.out
+          env:
+            - name: user.home
+              value: /tekton/home
+          workingDir: "/"
+        - name: build-sources
+          image: image-registry.openshift-image-registry.svc:5000/openshift/mvn-jdk-mandrel:3.6.3-jdk11-20.1.0.2
+          imagePullPolicy: Always
+          command:
+            - mvn
+          args:
+            - "-DskipTests"
+            - "-Dmaven.wagon.http.ssl.insecure=true"
+            - "-ssettings.xml"
+            - "-DappName=app"
+            - "clean"
+            - "package"
+            - "-Dquarkus.package.type=fast-jar"
+          env:
+            - name: user.home
+              value: /tekton/home
+          workingDir: "/workspace/source"
+        - name: build-image
+          image: image-registry.openshift-image-registry.svc:5000/openshift/buildah:noroot
+          imagePullPolicy: Always
+          script: |
+            echo "tekton:x:$(id -u):0:tekton user:${HOME}:/sbin/nologin" >> /etc/passwd
+            echo $(id -u):1:65536 > /etc/subuid
+            echo $(id -u):1100000000:65536 >> /etc/subuid
+            echo $(id -u):1:65536 > /etc/subgid
+            echo $(id -u):1100000000:65536 >> /etc/subgid
+            export BUILDAH_ISOLATION=chroot
+            mkdir -p ${HOME}/.config/containers
+            echo "[storage]" > ${HOME}/.config/containers/storage.conf
+            echo "driver=\"vfs\"" >> ${HOME}/.config/containers/storage.conf
+            DESTINATION_IMAGE="image-registry.openshift-image-registry.svc:5000/$(context.taskRun.namespace)/$(params.appName):latest"
+            CONTAINER=$(buildah --tls-verify=$(params.tlsVerify) from image-registry.openshift-image-registry.svc:5000/openshift/jdk-ubi-minimal:8.1 )
+            buildah copy ${CONTAINER} ./target/quarkus-app/lib/ /deployments/lib/
+            buildah copy ${CONTAINER} ./target/quarkus-app/quarkus-run.jar /deployments/app.jar
+            buildah copy ${CONTAINER} ./target/quarkus-app/app/ /deployments/app/
+            buildah copy ${CONTAINER} ./target/quarkus-app/quarkus/ /deployments/quarkus/
+            buildah config --label GIT_COMMIT=$(cat git-commit.out) --author="Tekton" ${CONTAINER}
+            buildah commit ${CONTAINER} ${DESTINATION_IMAGE}
+            buildah unmount ${CONTAINER}
+          env:
+            - name: user.home
+              value: /tekton/home
+          workingDir: "/workspace/source"
+        - name: push-image
+          image: image-registry.openshift-image-registry.svc:5000/openshift/buildah:noroot
+          imagePullPolicy: Always
+          script: |
+            echo "tekton:x:$(id -u):0:tekton user:${HOME}:/sbin/nologin" >> /etc/passwd
+            DESTINATION_IMAGE="image-registry.openshift-image-registry.svc:5000/$(context.taskRun.namespace)/$(params.appName):latest"
+            buildah push --tls-verify=$(params.tlsVerify) ${DESTINATION_IMAGE} docker://${DESTINATION_IMAGE}
+          workingDir: "/workspace/source"
+        volumes:
+        - name: varlibc
+          emptyDir: {}
+        - name: maven-settings
+          configMap:
+            name: maven-settings-xml
