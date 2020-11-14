@@ -22,24 +22,11 @@ podman login -u $(oc whoami) -p $(oc whoami -t) --tls-verify=false $(oc get rout
 
 ```
 
-Tekton:
-
-Install Tekton Operator:
-
-```bash
-git clone https://github.com/cgruver/tekton-pipeline-okd4.git
-cd tekton-pipeline-okd4
-oc apply -f ./operator/operator_v1alpha1_config_crd.yaml
-oc apply -f ./operator/role.yaml -n openshift-operators
-oc apply -f ./operator/role_binding.yaml -n openshift-operators
-oc apply -f ./operator/service_account.yaml -n openshift-operators
-oc apply -f ./operator/operator.yaml -n openshift-operators
-oc apply -f ./operator/operator_v1alpha1_config_cr.yaml
-```
-
 Create pipeline images and push to the internal OKD registry:
 
 ```bash
+cd images
+
 IMAGE_REGISTRY=$(oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}')
 podman login -u $(oc whoami) -p $(oc whoami -t) --tls-verify=false ${IMAGE_REGISTRY}
 
@@ -47,15 +34,18 @@ podman pull quay.io/openshift/origin-cli:4.5.0
 podman tag quay.io/openshift/origin-cli:4.5.0 ${IMAGE_REGISTRY}/openshift/origin-cli:4.5.0
 podman push ${IMAGE_REGISTRY}/openshift/origin-cli:4.5.0 --tls-verify=false
 
+podman pull registry.access.redhat.com/ubi8/ubi-minimal:8.3
+podman tag registry.access.redhat.com/ubi8/ubi-minimal:8.3 ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3
+podman push ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3 --tls-verify=false
 
-podman build -t ${IMAGE_REGISTRY}/openshift/jdk-ubi-minimal:8.1 jdk-ubi-minimal/
-podman push ${IMAGE_REGISTRY}/openshift/jdk-ubi-minimal:8.1 --tls-verify=false
+podman build -t ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 -f jdk-11-app-runner.Dockerfile .
+podman push ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 --tls-verify=false
 
-podman build -t ${IMAGE_REGISTRY}/openshift/maven-ubi-minimal:3.6.3-jdk-11 maven-ubi-minimal/
-podman push ${IMAGE_REGISTRY}/openshift/maven-ubi-minimal:3.6.3-jdk-11 --tls-verify=false
+podman build -t ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 -f maven-jdk-mandrel-builder.Dockerfile .
+podman push ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 --tls-verify=false
 
-podman build -t ${IMAGE_REGISTRY}/openshift/buildah:noroot buildah-noroot/
-podman push ${IMAGE_REGISTRY}/openshift/buildah:noroot --tls-verify=false
+podman build -t ${IMAGE_REGISTRY}/openshift/buildah:nonroot -f buildah-nonroot.Dockerfile .
+podman push ${IMAGE_REGISTRY}/openshift/buildah:nonroot --tls-verify=false
 ```
 
 Install Namespace Configuration Operator:
@@ -119,14 +109,30 @@ oc apply -f quarkus-jvm-pipeline-template.yml -n openshift
 
 Deploy Pipeline objects:
 
+Create a Maven Group in your Nexus instance.
+
+Create Maven Proxies for:
+
+- `https://repo1.maven.org/maven2/`
+- `https://repo.maven.apache.org/maven2`
+- `https://origin-maven.repository.redhat.com/ga/`
+
+Add all of the maven proxies that you created to your new maven group.
+
 ```bash
-oc process --local -f namespace-configuration.yml -p MVN_MIRROR_ID=homelab-central -p MVN_MIRROR_NAME=homelab-central -p MVN_MIRROR_URL=https://nexus.your.domain.com:8443/repository/homelab-central/ | oc apply -f -
+export MAVEN_GROUP=<The Maven Group You Just Created>
+oc process --local -f namespace-config/namespace-configuration-common-template.yaml -p MVN_MIRROR_ID=${MAVEN_GROUP} -p MVN_MIRROR_NAME=${MAVEN_GROUP} -p MVN_MIRROR_URL=https://nexus.your.domain.com:8443/repository/${MAVEN_GROUP}/ | oc apply -f -
+oc apply -f namespace-config/namespace-configuration-spring-boot.yaml
+oc apply -f namespace-config/namespace-configuration-quarkus-native.yaml
+oc apply -f namespace-config/namespace-configuration-quarkus-jvm.yaml
+oc apply -f namespace-config/namespace-configuration-quarkus-fast-jar.yaml
+oc apply -f templates -n openshift
 ```
 
 Label your namespace:
 
 ```bash
-oc label namespace my-namespace pipeline=tekton
+oc label namespace my-namespace tekton-pipelines=""
 ```
 
 Deploy an Application:
