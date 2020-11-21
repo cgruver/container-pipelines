@@ -261,6 +261,10 @@ spec:
           workingDir: /workspace/source
           script: |
             echo "Applying configs in ocp/config directory"
+            for i in $(ls ./$(params.config-git-path)/config)
+            do
+              sed -i "s|--APP_NAME--|$(params.appName)|g" ./$(params.config-git-path)/config/${i}
+            done
             oc apply -f ./$(params.config-git-path)/config
             if [ -f ./$(params.config-git-path)/patch/deployment-patch.yaml ]
             then
