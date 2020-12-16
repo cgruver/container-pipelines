@@ -256,7 +256,7 @@ spec:
             value: /tekton/home
           workingDir: "/"
         - name: apply
-          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.5.0
+          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
           imagePullPolicy: IfNotPresent
           workingDir: /workspace/source
           script: |
@@ -285,7 +285,7 @@ spec:
           description: the application name
         steps:
         - name: rollout
-          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.5.0
+          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
           imagePullPolicy: IfNotPresent
           workingDir: /workspace
           command: ["/bin/bash", "-c"]
@@ -308,7 +308,7 @@ spec:
             description: the application name
         steps:
           - name: initialize
-            image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.5.0
+            image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
             imagePullPolicy: Always
             workingDir: /workspace
             command: ["/bin/bash", "-c"]

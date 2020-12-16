@@ -22,6 +22,13 @@ podman login -u $(oc whoami) -p $(oc whoami -t) --tls-verify=false $(oc get rout
 
 ```
 
+If you need to clean up lots of image pieces and parts that are laying around, the do this:
+
+__Warning:__ This will delete all of the container images on your system.  It will also likely free up a LOT of disk space.
+```bash
+podman system prune --all --force
+```
+
 Create pipeline images and push to the internal OKD registry:
 
 ```bash
@@ -30,9 +37,9 @@ cd images
 IMAGE_REGISTRY=$(oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}')
 podman login -u $(oc whoami) -p $(oc whoami -t) --tls-verify=false ${IMAGE_REGISTRY}
 
-podman pull quay.io/openshift/origin-cli:4.5.0
-podman tag quay.io/openshift/origin-cli:4.5.0 ${IMAGE_REGISTRY}/openshift/origin-cli:4.5.0
-podman push ${IMAGE_REGISTRY}/openshift/origin-cli:4.5.0 --tls-verify=false
+podman pull quay.io/openshift/origin-cli:4.6.0
+podman tag quay.io/openshift/origin-cli:4.6.0 ${IMAGE_REGISTRY}/openshift/origin-cli:4.6.0
+podman push ${IMAGE_REGISTRY}/openshift/origin-cli:4.6.0 --tls-verify=false
 
 podman pull registry.access.redhat.com/ubi8/ubi-minimal:8.3
 podman tag registry.access.redhat.com/ubi8/ubi-minimal:8.3 ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3
