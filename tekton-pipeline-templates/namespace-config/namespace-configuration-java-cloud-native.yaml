@@ -132,7 +132,7 @@ spec:
           default: "false"
         steps:
         - name: prep-build
-          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2
+          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:latest
           imagePullPolicy: Always
           script: |
             git clone -b $(params.git-branch) --single-branch $(params.git-repo) /workspace/source
@@ -144,7 +144,7 @@ spec:
             value: /tekton/home
           workingDir: "/"
         - name: build-sources
-          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2
+          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:latest
           imagePullPolicy: Always
           script: |
             MVN_ARGS="-DskipTests -Dmaven.wagon.http.ssl.insecure=true -ssettings.xml -DappName=app"
@@ -170,9 +170,7 @@ spec:
           imagePullPolicy: Always
           script: |
             echo "tekton:x:$(id -u):0:tekton user:${HOME}:/sbin/nologin" >> /etc/passwd
-            echo $(id -u):1:65536 > /etc/subuid
             echo $(id -u):1100000000:65536 >> /etc/subuid
-            echo $(id -u):1:65536 > /etc/subgid
             echo $(id -u):1100000000:65536 >> /etc/subgid
             export BUILDAH_ISOLATION=chroot
             mkdir -p ${HOME}/.config/containers
@@ -181,9 +179,9 @@ spec:
             DESTINATION_IMAGE="image-registry.openshift-image-registry.svc:5000/$(context.taskRun.namespace)/$(params.appName):latest"
             if [[ $(params.build-type) == "quarkus-native" ]]
             then
-              CONTAINER=$(buildah --tls-verify=$(params.tlsVerify) from image-registry.openshift-image-registry.svc:5000/openshift/ubi-minimal:8.3)
+              CONTAINER=$(buildah --tls-verify=$(params.tlsVerify) from image-registry.openshift-image-registry.svc:5000/openshift/ubi-minimal:latest)
             else
-              CONTAINER=$(buildah --tls-verify=$(params.tlsVerify) from image-registry.openshift-image-registry.svc:5000/openshift/jdk-11-app-runner:1.3.8 )
+              CONTAINER=$(buildah --tls-verify=$(params.tlsVerify) from image-registry.openshift-image-registry.svc:5000/openshift/jdk-11-app-runner:latest )
             fi
             case $(params.build-type) in
               spring-boot)
@@ -247,7 +245,7 @@ spec:
           description: the application name
         steps:
         - name: prep-build
-          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2
+          image: image-registry.openshift-image-registry.svc:5000/openshift/maven-jdk-mandrel-builder:latest
           imagePullPolicy: IfNotPresent
           script: |
             git clone -b $(params.config-git-branch) --single-branch $(params.config-git-repo) /workspace/source
@@ -256,16 +254,16 @@ spec:
             value: /tekton/home
           workingDir: "/"
         - name: apply
-          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
+          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:latest
           imagePullPolicy: IfNotPresent
           workingDir: /workspace/source
           script: |
-            echo "Applying configs in ocp/config directory"
-            for i in $(ls ./$(params.config-git-path)/config)
+            echo "Applying artifacts in $(params.config-git-path)/apply directory"
+            for i in $(ls ./$(params.config-git-path)/apply)
             do
-              sed -i "s|--APP_NAME--|$(params.appName)|g" ./$(params.config-git-path)/config/${i}
+              sed -i "s|--APP_NAME--|$(params.appName)|g" ./$(params.config-git-path)/apply/${i}
             done
-            oc apply -f ./$(params.config-git-path)/config
+            oc apply -f ./$(params.config-git-path)/apply
             if [ -f ./$(params.config-git-path)/patch/deployment-patch.yaml ]
             then
               echo "Patching deployment"
@@ -285,7 +283,7 @@ spec:
           description: the application name
         steps:
         - name: rollout
-          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
+          image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:latest
           imagePullPolicy: IfNotPresent
           workingDir: /workspace
           command: ["/bin/bash", "-c"]
@@ -308,7 +306,7 @@ spec:
             description: the application name
         steps:
           - name: initialize
-            image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:4.6.0
+            image: image-registry.openshift-image-registry.svc:5000/openshift/origin-cli:latest
             imagePullPolicy: Always
             workingDir: /workspace
             command: ["/bin/bash", "-c"]

@@ -39,20 +39,31 @@ podman login -u $(oc whoami) -p $(oc whoami -t) --tls-verify=false ${IMAGE_REGIS
 
 podman pull quay.io/openshift/origin-cli:4.6.0
 podman tag quay.io/openshift/origin-cli:4.6.0 ${IMAGE_REGISTRY}/openshift/origin-cli:4.6.0
-podman push ${IMAGE_REGISTRY}/openshift/origin-cli:4.6.0 --tls-verify=false
+podman tag quay.io/openshift/origin-cli:4.6.0 ${IMAGE_REGISTRY}/openshift/origin-cli:latest
 
 podman pull registry.access.redhat.com/ubi8/ubi-minimal:8.3
 podman tag registry.access.redhat.com/ubi8/ubi-minimal:8.3 ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3
-podman push ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3 --tls-verify=false
+podman tag registry.access.redhat.com/ubi8/ubi-minimal:8.3 ${IMAGE_REGISTRY}/openshift/ubi-minimal:latest
+
 
 podman build -t ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 -f jdk-11-app-runner.Dockerfile .
-podman push ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 --tls-verify=false
+podman tag ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:latest
 
 podman build -t ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 -f maven-jdk-mandrel-builder.Dockerfile .
-podman push ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 --tls-verify=false
+podman tag ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:latest
 
 podman build -t ${IMAGE_REGISTRY}/openshift/buildah:nonroot -f buildah-nonroot.Dockerfile .
+
+podman push ${IMAGE_REGISTRY}/openshift/origin-cli:4.6.0 --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/origin-cli:latest --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/ubi-minimal:8.3 --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/ubi-minimal:latest --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:1.3.8 --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/jdk-11-app-runner:latest --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:3.6.3-11-20.2 --tls-verify=false
+podman push ${IMAGE_REGISTRY}/openshift/maven-jdk-mandrel-builder:latest --tls-verify=false
 podman push ${IMAGE_REGISTRY}/openshift/buildah:nonroot --tls-verify=false
+
 ```
 
 Install Namespace Configuration Operator:
@@ -127,23 +138,31 @@ Create Maven Proxies for:
 Add all of the maven proxies that you created to your new maven group.
 
 ```bash
-export MAVEN_GROUP=<The Maven Group You Just Created>
-oc process --local -f namespace-config/namespace-configuration-common-template.yaml -p MVN_MIRROR_ID=${MAVEN_GROUP} -p MVN_MIRROR_NAME=${MAVEN_GROUP} -p MVN_MIRROR_URL=https://nexus.your.domain.com:8443/repository/${MAVEN_GROUP}/ | oc apply -f -
-oc apply -f namespace-config/namespace-configuration-spring-boot.yaml
-oc apply -f namespace-config/namespace-configuration-quarkus-native.yaml
-oc apply -f namespace-config/namespace-configuration-quarkus-jvm.yaml
-oc apply -f namespace-config/namespace-configuration-quarkus-fast-jar.yaml
+MAVEN_GROUP=<The Maven Group You Just Created>
+NEXUS_URL=https://nexus.your.domain.com:8443/repository
+oc process --local -f namespace-config/namespace-configuration-maven-mirror-template.yaml -p MVN_MIRROR_ID=${MAVEN_GROUP} -p MVN_MIRROR_NAME=${MAVEN_GROUP} -p MVN_MIRROR_URL=${NEXUS_URL}/${MAVEN_GROUP} | oc apply -f -
+oc apply -f namespace-config/namespace-configuration-java-cloud-native.yaml 
+
 oc apply -f templates -n openshift
 ```
 
 Label your namespace:
 
 ```bash
-oc label namespace my-namespace tekton-pipelines=""
+oc label namespace my-namespace maven-mirror-config=""
+oc label namespace my-namespace tekton-java-cloud-native=""
 ```
 
 Deploy an Application:
 
 ```bash
-oc process openshift//quarkus-jvm-pipeline-dev -p APP_NAME=your-project-name -p GIT_REPOSITORY=git@bitbucket.org:your/project.git -p GIT_BRANCH=master | oc create -f -
+NAMESPACE=
+PROJECT_NAME=
+GIT_REPOSITORY=
+GIT_BRANCH=
+CONFIG_GIT_REPOSITORY=
+CONFIG_GIT_BRANCH=
+CONFIG_GIT_PATH=
+
+oc process openshift//quarkus-jvm-pipeline-dev -p APP_NAME=${PROJECT_NAME} -p GIT_REPOSITORY=${GIT_REPOSITORY} -p GIT_BRANCH=${GIT_BRANCH} -p CONFIG_GIT_REPOSITORY=${CONFIG_GIT_REPOSITORY} -p CONFIG_GIT_BRANCH=${CONFIG_GIT_BRANCH} -p CONFIG_GIT_PATH=${CONFIG_GIT_PATH} | oc apply -n ${NAMESPACE} -f -
 ```
